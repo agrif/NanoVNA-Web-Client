@@ -60,7 +60,11 @@ class NanoVNA_Base {
 
 		this.buffer = '';
 		this.startReaderThread( (data) => {
-			this.buffer += String.fromCharCode(...data);
+			if (typeof data === 'string' || data instanceof String) {
+				this.buffer += data;
+			} else {
+				this.buffer += String.fromCharCode(...data);
+			}
 			// console.log(this.buffer);
 			for (var i = 0, it; (it = callbacks[i]); i++) {
 				it();
@@ -607,13 +611,112 @@ class NanoVNA_Capacitor extends NanoVNA_Base {
 		this.initialized = false;
 	}
 }
+
+class NanoVNA_WebSocket extends NanoVNA_Base {
+	constructor(opts) {
+		super(opts);
+	}
+
+	static async requestDevice(filters) {
+		return this.getDevice();
+	}
+
+	static async getDevice(opts) {
+		const url = new URL('nanovna-control', window.location.href);
+		url.protocol = url.protocol.replace('http', 'ws');
+		return url.href;
+	}
+
+	static deviceInfo(device) {
+		// no information for websocket...
+		return { };
+	}
+
+	async open(url) {
+		const ws = new WebSocket(url);
+
+		let opened = await new Promise(function(resolve, reject) {
+			ws.onerror = (e => reject('could not open websocket'));
+			ws.addEventListener('open', resolve, {once: true});
+		});
+
+		this.ws = ws;
+		await this.init();
+	}
+
+	async startReaderThread(callback) {
+		if (this.readerThread) {
+			throw new Error("already started");
+		}
+
+		console.log(this.ws.readyState);
+		//const reader = this.port.readable.getReader();
+		const transfer = async (resolve) => {
+			try {
+				const ws = this.ws;
+				const value = await new Promise(function(msgResolve, reject) {
+					ws.onerror = (e => reject('could not read websocket'));
+					ws.onclose = (e => reject('websocket closed'));
+					ws.addEventListener('message', m => msgResolve(m.data), {once: true});
+				});
+				if (this.readerThread) {
+					transfer(resolve);
+				} else {
+					resolve();
+				}
+				callback(value);
+			} catch (e) {
+				this.onerror(e);
+				this.close();
+			}
+		};
+
+		this.readerThread = [
+			new Promise( resolve => transfer(resolve) ).catch( (e) => {
+				console.log('readerThread catch', e);
+			}),
+		];
+	}
+
+	async stopReaderThread() {
+		if (this.readerThread) {
+			console.log('stopReaderThread');
+			const promises = this.readerThread;
+			this.readerThread = null;
+			await Promise.all(promises);
+		}
+	}
+
+	async write(data) {
+		if (this.ws.readyState == WebSocket.OPEN) {
+			this.ws.send(data);
+		} else {
+			this.close();
+			this.onerror("websocket closed");
+			throw new Error("websocket closed");
+		}
+	}
+
+	async close() {
+		try {
+			await this.stopReaderThread();
+		} catch (e) {
+			console.log('failed to stop reader thread', e);
+		}
+		this.ondisconnected();
+		this.ws = null;
+		this.initialized = false;
+	}
+}
+
 console.log('typeof serial', typeof serial);
 
-const NanoVNA =
-	(typeof Capacitor !== "undefined") ? NanoVNA_Capacitor:
-	("serial" in navigator) ? NanoVNA_WebSerial:
-	NanoVNA_WebUSB;
+//const NanoVNA =
+//	(typeof Capacitor !== "undefined") ? NanoVNA_Capacitor:
+//	("serial" in navigator) ? NanoVNA_WebSerial:
+//	NanoVNA_WebUSB;
 
 // const NanoVNA = NanoVNA_WebUSB;
 //const NanoVNA = NanoVNA_WebSerial;
+const NanoVNA = NanoVNA_WebSocket;
 console.log(`Use ${NanoVNA.constructor.name} backend`);
