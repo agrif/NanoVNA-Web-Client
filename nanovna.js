@@ -622,7 +622,7 @@ class NanoVNA_WebSocket extends NanoVNA_Base {
 	}
 
 	static async getDevice(opts) {
-		const url = new URL('nanovna-control', window.location.href);
+		const url = new URL('nanovna-control', location.href);
 		url.protocol = url.protocol.replace('http', 'ws');
 		return url.href;
 	}
