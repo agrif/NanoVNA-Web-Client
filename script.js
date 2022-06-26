@@ -105,10 +105,14 @@ Chart.Tooltip.positioners.custom = function (elements, eventPosition) {
 };
 
 function versionNumber(str) {
-	const version = str.match(/(\d+)\.(\d+)\.(\d+)/);
-	if (version) {
-		return Array.from(version).slice(1).reduce( (r, i) => r * 10000 + Number(i), 0)
-	} 
+	const version3 = str.match(/(\d+)\.(\d+)\.(\d+)/);
+	if (version3) {
+		return Array.from(version3).slice(1).reduce( (r, i) => r * 10000 + Number(i), 0)
+	}
+	const version2 = str.match(/(\d+)\.(\d+)/);
+	if (version2) {
+		return 10000 * Array.from(version2).slice(1).reduce( (r, i) => r * 10000 + Number(i), 0)
+	}
 }
 
 function colorGen(h, s, l, i) {
